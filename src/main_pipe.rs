@@ -78,14 +78,11 @@ varying float light_depth;
 uniform sampler2D shadow_map;
 
 void main() {
-    float ambient = 0.2;
-    float light = 0.8;
-    if (texture2D(shadow_map, light_uv).r < light_depth) {
-        light = 0.0;
-    }
-    //light = texture2D(shadow_map, light_uv).r;
-    gl_FragColor = color * (ambient + light);
-    //gl_FragColor = vec4(vec3(light), 1.0);
+    float ambient = 0.0;
+    float c = 4.0;
+    vec4 texel = texture2D(shadow_map, light_uv);
+    float shadow = clamp(exp(-c * (light_depth - texel.r)), 0.0, 1.0);
+    gl_FragColor = color * clamp(ambient + shadow, 0.0, 1.0);
 }
 "#;
 
