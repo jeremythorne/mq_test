@@ -3,7 +3,9 @@ use miniquad::*;
 use glam::{vec3, Mat4, EulerRot};
 use quad_rand as qrand;
 
-struct PipeBind {
+mod main_pipe;
+
+pub struct PipeBind {
     pipe: Pipeline,
     bind: Bindings,
 }
@@ -217,49 +219,6 @@ fn depth_write_pipe(ctx: &mut Context) -> PipeBind {
         ],
         shader,
         PipelineParams {
-            depth_test: Comparison::Equal,
-            depth_write: true, // TODO we don't want writes on here only reads
-            ..Default::default()
-        },
-    );
-
-    PipeBind {
-        pipe,
-        bind
-    }
-}
-
-fn main_pipe(ctx: &mut Context) -> PipeBind {
-    let (vertices, indices) = cube_verts();
-    let vertex_buffer = Buffer::immutable(ctx, BufferType::VertexBuffer, &vertices);
-    let index_buffer = Buffer::immutable(ctx, BufferType::IndexBuffer, &indices);
-
-    let bind = Bindings {
-        vertex_buffers: vec![vertex_buffer],
-        index_buffer: index_buffer,
-        images: vec![],
-    };
-
-    let shader = Shader::new(
-        ctx,
-        main_shader::VERTEX,
-        main_shader::FRAGMENT,
-        main_shader::meta(),
-    )
-    .unwrap();
-
-    let pipe = Pipeline::with_params(
-        ctx,
-        &[BufferLayout {
-            stride: 36,
-            ..Default::default()
-        }],
-        &[
-            VertexAttribute::new("pos", VertexFormat::Float3),
-            VertexAttribute::new("color0", VertexFormat::Float4),
-        ],
-        shader,
-        PipelineParams {
             depth_test: Comparison::LessOrEqual,
             depth_write: true,
             ..Default::default()
@@ -271,19 +230,11 @@ fn main_pipe(ctx: &mut Context) -> PipeBind {
         bind
     }
 }
+
 impl Stage {
     pub fn new(ctx: &mut Context) -> Stage {
         let (w, h) = ctx.screen_size();
         let color_img = Texture::new_render_texture(
-            ctx,
-            TextureParams {
-                width: w as _,
-                height: h as _,
-                format: TextureFormat::RGBA8,
-                ..Default::default()
-            },
-        );
-        let depth_write_img = Texture::new_render_texture(
             ctx,
             TextureParams {
                 width: w as _,
@@ -302,8 +253,27 @@ impl Stage {
             },
         );
 
+        let shadow_map = Texture::new_render_texture(
+            ctx,
+            TextureParams {
+                width: 256,
+                height: 256,
+                format: TextureFormat::RGBA8,
+                ..Default::default()
+            },
+        );
+        let shadow_depth_img = Texture::new_render_texture(
+            ctx,
+            TextureParams {
+                width: 256,
+                height: 256,
+                format: TextureFormat::Depth,
+                ..Default::default()
+            },
+        );
+
         let offscreen_pass = RenderPass::new(ctx, color_img, depth_img);
-        let depth_write_pass = RenderPass::new(ctx, depth_write_img, depth_img);
+        let depth_write_pass = RenderPass::new(ctx, shadow_map, shadow_depth_img);
 
         let mut cubes = Vec::<Mat4>::new();
         for _ in 0..40 {
@@ -323,9 +293,9 @@ impl Stage {
 
         let blur = blur_pipe(ctx, color_img);
         let copy = copy_pipe(ctx, color_img);
-        let depth_view = depth_view_pipe(ctx, depth_write_img);
+        let depth_view = depth_view_pipe(ctx, shadow_map);
         let depth_write = depth_write_pipe(ctx);
-        let main = main_pipe(ctx);
+        let main = main_pipe::pipe(ctx, shadow_map);
 
         Stage {
             blur,
@@ -355,15 +325,7 @@ impl EventHandler for Stage {
                 ..Default::default()
             },
         );
-        let depth_write_img = Texture::new_render_texture(
-            ctx,
-            TextureParams {
-                width: width as _,
-                height: height as _,
-                format: TextureFormat::RGBA8,
-                ..Default::default()
-            },
-        );
+        
         let depth_img = Texture::new_render_texture(
             ctx,
             TextureParams {
@@ -375,15 +337,11 @@ impl EventHandler for Stage {
         );
 
         let offscreen_pass = RenderPass::new(ctx, color_img, depth_img);
-        let depth_write_pass = RenderPass::new(ctx, depth_write_img, depth_img);
 
         self.offscreen_pass.delete(ctx);
         self.offscreen_pass = offscreen_pass;
-        self.depth_write_pass.delete(ctx);
-        self.depth_write_pass = depth_write_pass;
         self.copy.bind.images[0] = color_img;
         self.blur.bind.images[0] = color_img;
-        self.depth_view.bind.images[0] = depth_write_img;
     }
 
     fn draw(&mut self, ctx: &mut Context) {
@@ -396,41 +354,45 @@ impl EventHandler for Stage {
         );
         let view_proj = proj * view;
 
+        let proj = Mat4::perspective_rh_gl(60.0f32.to_radians(), 1.0, 10.0, 20.0);
+        let light_view = Mat4::look_at_rh(
+            vec3(10.0, 10.0, 10.0),
+            vec3(0.0, 0.0, 0.0),
+            vec3(0.0, 1.0, 0.0),
+        );
+        let light_view_proj = proj * light_view;
+ 
         //self.rx += 0.01;
         self.ry += 0.01;
         let model = Mat4::from_euler(EulerRot::YXZ, self.ry, self.rx, 0.);
 
         let (w, h) = ctx.screen_size();
-        // the offscreen pass, rendering rotating, untextured cubes into a render target image
-        ctx.begin_pass(
-            self.offscreen_pass,
-            PassAction::clear_color(1.0, 1.0, 1.0, 1.0),
-        );
-        ctx.apply_pipeline(&self.main.pipe);
-        ctx.apply_bindings(&self.main.bind);
-        for &cube in self.cubes.iter() {
-            ctx.apply_uniforms(&main_shader::Uniforms {
-                mvp: view_proj * model * cube,
-            });
-            ctx.draw(0, 36, 1);
-        }
-        ctx.end_render_pass();
-
-        // also write the depth (for future shadow map)
+        // shadow map
         ctx.begin_pass(
             self.depth_write_pass,
-            PassAction::Clear {
-                color: Some((0.0, 0.0, 0.0, 0.0)),
-                depth: None,
-                stencil: None,
-            }
+            PassAction::clear_color(1.0, 1.0, 1.0, 1.0),
         );
         ctx.apply_pipeline(&self.depth_write.pipe);
         ctx.apply_bindings(&self.depth_write.bind);
         for &cube in self.cubes.iter() {
             ctx.apply_uniforms(&depth_write_shader::Uniforms {
+                mvp: light_view_proj * model * cube,
+            });
+            ctx.draw(0, 36, 1);
+        }
+        ctx.end_render_pass();
+
+        // the offscreen pass, rendering rotating, untextured cubes into a render target image
+        ctx.begin_pass(
+            self.offscreen_pass,
+            PassAction::clear_color(0.0, 0.0, 0.0, 0.0),
+        );
+        ctx.apply_pipeline(&self.main.pipe);
+        ctx.apply_bindings(&self.main.bind);
+        for &cube in self.cubes.iter() {
+            ctx.apply_uniforms(&main_pipe::Uniforms {
                 mvp: view_proj * model * cube,
-                mv: model * cube,
+                light_mvp: light_view_proj * model * cube,
             });
             ctx.draw(0, 36, 1);
         }
@@ -439,8 +401,8 @@ impl EventHandler for Stage {
         // and the post-processing-pass, rendering a quad, using the
         // previously rendered offscreen render-target as texture
         ctx.begin_default_pass(PassAction::Nothing);
-        ctx.apply_pipeline(&self.depth_view.pipe);
-        ctx.apply_bindings(&self.depth_view.bind);
+        ctx.apply_pipeline(&self.copy.pipe);
+        ctx.apply_bindings(&self.copy.bind);
         //ctx.apply_uniforms(&copy_to_screen_shader::Uniforms {
         //    resolution: glam::vec2(w, h),
         //});
@@ -595,11 +557,10 @@ mod depth_write_shader {
     varying lowp vec4 vpos;
 
     uniform mat4 mvp;
-    uniform mat4 mv;
 
     void main() {
         gl_Position = mvp * pos;
-        vpos = mv * pos;
+        vpos = mvp * pos;
     }
     "#;
 
@@ -608,7 +569,7 @@ mod depth_write_shader {
     varying lowp vec4 vpos;
 
     void main() {
-        gl_FragColor = vec4(vec3(vpos.z / 10.0), 1.0);
+        gl_FragColor = vec4(vec3(vpos.z / 100.0), 1.0);
     }
     "#;
 
@@ -617,50 +578,7 @@ mod depth_write_shader {
             images: vec![],
             uniforms: UniformBlockLayout {
                 uniforms: vec![UniformDesc::new("mvp", UniformType::Mat4),
-                    UniformDesc::new("mv", UniformType::Mat4)
                 ],
-            },
-        }
-    }
-
-    #[repr(C)]
-    pub struct Uniforms {
-        pub mvp: glam::Mat4,
-        pub mv: glam::Mat4,
-    }
-}
-
-mod main_shader {
-    use miniquad::*;
-
-    pub const VERTEX: &str = r#"#version 100
-    attribute vec4 pos;
-    attribute vec4 color0;
-
-    varying lowp vec4 color;
-
-    uniform mat4 mvp;
-
-    void main() {
-        gl_Position = mvp * pos;
-        color = color0;
-    }
-    "#;
-
-    pub const FRAGMENT: &str = r#"#version 100
-
-    varying lowp vec4 color;
-
-    void main() {
-        gl_FragColor = color;
-    }
-    "#;
-
-    pub fn meta() -> ShaderMeta {
-        ShaderMeta {
-            images: vec![],
-            uniforms: UniformBlockLayout {
-                uniforms: vec![UniformDesc::new("mvp", UniformType::Mat4)],
             },
         }
     }
