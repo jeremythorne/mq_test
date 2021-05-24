@@ -14,11 +14,12 @@ struct Stage {
     blur: PipeBind,
     copy: PipeBind,
     depth_view: PipeBind,
-    depth_write: PipeBind,
-    main: PipeBind,
+    depth_write: Pipeline,
+    cube: PipeBind,
     offscreen_pass: RenderPass,
     depth_write_pass: RenderPass,
     cubes: Vec<Mat4>,
+    ground_plane: Mat4,
     rx: f32,
     ry: f32,
 }
@@ -189,17 +190,7 @@ fn depth_view_pipe(ctx: &mut Context, tex:Texture) -> PipeBind {
     }
 }
 
-fn depth_write_pipe(ctx: &mut Context) -> PipeBind {
-    let (vertices, indices) = cube_verts();
-    let vertex_buffer = Buffer::immutable(ctx, BufferType::VertexBuffer, &vertices);
-    let index_buffer = Buffer::immutable(ctx, BufferType::IndexBuffer, &indices);
-
-    let bind = Bindings {
-        vertex_buffers: vec![vertex_buffer],
-        index_buffer: index_buffer,
-        images: vec![],
-    };
-
+fn depth_write_pipe(ctx: &mut Context) -> Pipeline {
     let shader = Shader::new(
         ctx,
         depth_write_shader::VERTEX,
@@ -225,10 +216,7 @@ fn depth_write_pipe(ctx: &mut Context) -> PipeBind {
         },
     );
 
-    PipeBind {
-        pipe,
-        bind
-    }
+    pipe
 }
 
 impl Stage {
@@ -290,22 +278,27 @@ impl Stage {
             ));
             cubes.push(rot * trans * scale);
         }
+        let rot = Mat4::from_euler(EulerRot::YXZ, 
+            0., -std::f32::consts::PI / 2., 0.);
+        let scale = Mat4::from_scale(vec3(10.0, 10.0, 1.0));
+        let ground_plane = rot * scale;
 
         let blur = blur_pipe(ctx, color_img);
         let copy = copy_pipe(ctx, color_img);
         let depth_view = depth_view_pipe(ctx, shadow_map);
         let depth_write = depth_write_pipe(ctx);
-        let main = main_pipe::pipe(ctx, shadow_map);
+        let cube = main_pipe::cube_pipe(ctx, shadow_map);
 
         Stage {
             blur,
             copy,
             depth_view,
             depth_write,
-            main,
+            cube,
             offscreen_pass,
             depth_write_pass,
             cubes,
+            ground_plane,
             rx: 0.,
             ry: 0.,
         }
@@ -372,14 +365,18 @@ impl EventHandler for Stage {
             self.depth_write_pass,
             PassAction::clear_color(1.0, 1.0, 1.0, 1.0),
         );
-        ctx.apply_pipeline(&self.depth_write.pipe);
-        ctx.apply_bindings(&self.depth_write.bind);
+        ctx.apply_pipeline(&self.depth_write);
+        ctx.apply_bindings(&self.cube.bind);
         for &cube in self.cubes.iter() {
             ctx.apply_uniforms(&depth_write_shader::Uniforms {
                 mvp: light_view_proj * model * cube,
             });
             ctx.draw(0, 36, 1);
         }
+        ctx.apply_uniforms(&depth_write_shader::Uniforms {
+            mvp: light_view_proj * model * self.ground_plane,
+        });
+        ctx.draw(0, 6, 1);
         ctx.end_render_pass();
 
         // the offscreen pass, rendering rotating, untextured cubes into a render target image
@@ -387,8 +384,8 @@ impl EventHandler for Stage {
             self.offscreen_pass,
             PassAction::clear_color(0.0, 0.0, 0.0, 0.0),
         );
-        ctx.apply_pipeline(&self.main.pipe);
-        ctx.apply_bindings(&self.main.bind);
+        ctx.apply_pipeline(&self.cube.pipe);
+        ctx.apply_bindings(&self.cube.bind);
         for &cube in self.cubes.iter() {
             ctx.apply_uniforms(&main_pipe::Uniforms {
                 mvp: view_proj * model * cube,
@@ -396,6 +393,11 @@ impl EventHandler for Stage {
             });
             ctx.draw(0, 36, 1);
         }
+        ctx.apply_uniforms(&main_pipe::Uniforms {
+            mvp: view_proj * model * self.ground_plane,
+            light_mvp: light_view_proj * model * self.ground_plane,
+        });
+        ctx.draw(0, 6, 1);
         ctx.end_render_pass();
 
         // and the post-processing-pass, rendering a quad, using the
