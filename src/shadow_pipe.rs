@@ -1,10 +1,12 @@
 use miniquad::*;
 use glam::Mat4;
 use crate::objects::Object;
+use crate::blur_pipe::BlurPipe;
 
 pub struct ShadowPipe {
     pass:RenderPass,
     pipe:Pipeline,
+    blur_pipe:BlurPipe,
     output:Texture
 }
 
@@ -56,10 +58,14 @@ impl ShadowPipe {
             },
         );
 
+        let blur_pipe = BlurPipe::new(ctx, color_img);
+        let output = blur_pipe.get_output();
+
         ShadowPipe {
             pass,
             pipe,
-            output: color_img
+            blur_pipe,
+            output
         }
     }
 
@@ -79,6 +85,7 @@ impl ShadowPipe {
             ctx.draw(obj.start, obj.end, 1);
         }
         ctx.end_render_pass();
+        self.blur_pipe.draw(ctx);
     }
 
     pub fn get_output(&self) -> Texture {

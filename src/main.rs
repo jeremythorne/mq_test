@@ -225,6 +225,8 @@ impl EventHandler for Stage {
             &model, &view_proj);
 
         let output = &self.glow_blend;
+        // let output = &mut self.copy;
+        // output.bind.images[0] = self.glow.get_output();
         // and the post-processing-pass, rendering a quad, using the
         // previously rendered offscreen render-target as texture
         ctx.begin_default_pass(PassAction::Nothing);

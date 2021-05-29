@@ -1,5 +1,6 @@
 use miniquad::*;
 use mq_test::quad_verts;
+use glam::{vec2, Vec2};
 
 struct Node {
     pass:RenderPass,
@@ -71,6 +72,10 @@ impl Node {
         );
         ctx.apply_pipeline(&self.pipe);
         ctx.apply_bindings(&self.bind);
+        let (w, h) = (256.0, 256.0);
+        ctx.apply_uniforms(&Uniforms {
+            resolution: vec2(1.0 / w, 1.0 / h),
+        });
         ctx.draw(0, 6, 1);
         ctx.end_render_pass();
     }
@@ -125,15 +130,16 @@ precision lowp float;
 varying vec2 texcoord;
 
 uniform sampler2D tex;
+uniform vec2 resolution;
 
 void main() {
     float width = 3.0;
     vec4 acc = vec4(0.0);
 
     for (int i = 0; i <= 6; i++) {
-        vec4 src = texture2D(tex, texcoord + vec2(float(i) - width, 0.0));
+        acc += texture2D(tex, texcoord + resolution * vec2(float(i) - width, 0.0));
     }
-    gl_FragColor = acc / (2.0 * float(width));
+    gl_FragColor = acc / (2.0 * width);
 }
 "#;
 
@@ -143,15 +149,16 @@ precision lowp float;
 varying vec2 texcoord;
 
 uniform sampler2D tex;
+uniform vec2 resolution;
 
 void main() {
     float width = 3.0;
     vec4 acc = vec4(0.0);
 
     for (int i = 0; i <= 6; i++) {
-        vec4 src = texture2D(tex, texcoord + vec2(0.0, float(i) - width));
+        acc += texture2D(tex, texcoord + resolution * vec2(0.0, float(i) - width));
     }
-    gl_FragColor = acc / (2.0 * float(width));
+    gl_FragColor = acc / (2.0 * width);
 }
 "#;
 
@@ -159,7 +166,12 @@ pub fn meta() -> ShaderMeta {
     ShaderMeta {
         images: vec!["tex".to_string()],
         uniforms: UniformBlockLayout {
-            uniforms: vec![],
-        },
+            uniforms: vec![UniformDesc::new("resolution", UniformType::Float2),
+            ]},
     }
+}
+
+#[repr(C)]
+pub struct Uniforms {
+    pub resolution: glam::Vec2,
 }
