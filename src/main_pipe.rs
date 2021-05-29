@@ -115,7 +115,7 @@ impl MainPipe {
 
         self.pass.delete(ctx);
         self.pass = pass;
-
+        self.output = color_img;
     }
 
     pub fn draw(&self, ctx: &mut Context,

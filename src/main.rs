@@ -2,13 +2,17 @@ use miniquad::*;
 
 use glam::{vec3, Mat4, EulerRot};
 
+mod blur_pipe;
 mod main_pipe;
 mod shadow_pipe;
+mod glow_pipe;
 mod objects;
 
 use main_pipe::MainPipe;
 use shadow_pipe::ShadowPipe;
+use glow_pipe::GlowPipe;
 use objects::{Object, ColouredObject};
+use mq_test::quad_verts;
 
 struct PipeBind {
     pipe: Pipeline,
@@ -20,24 +24,14 @@ struct Stage {
     shadow_map_bind: Bindings,
     main: MainPipe,
     main_bind: Bindings,
+    glow: GlowPipe,
+    glow_bind: Bindings,
     copy: PipeBind,
+    glow_blend: PipeBind,
     objects: Vec<Object>,
     coloured_objects: Vec<ColouredObject>,
     rx: f32,
     ry: f32,
-}
-
-fn quad_verts() -> (&'static[f32], &'static[u16]) {
-    #[rustfmt::skip]
-    let vertices: &[f32] = &[
-        /* pos         uvs */
-        -1.0, -1.0,    0.0, 0.0,
-        1.0, -1.0,    1.0, 0.0,
-        1.0,  1.0,    1.0, 1.0,
-        -1.0,  1.0,    0.0, 1.0,
-    ];
-    let indices: &[u16] = &[0, 1, 2, 0, 2, 3];
-    (vertices, indices)
 }
 
 fn copy_pipe(ctx: &mut Context, tex:Texture) -> PipeBind {
@@ -75,7 +69,8 @@ fn copy_pipe(ctx: &mut Context, tex:Texture) -> PipeBind {
     }
 }
 
-fn blur_pipe(ctx: &mut Context, tex:Texture) -> PipeBind {
+fn glow_blend_pipe(ctx: &mut Context,
+        main:Texture, glow:Texture) -> PipeBind {
     let (vertices, indices) = quad_verts();
     let vertex_buffer = Buffer::immutable(ctx, BufferType::VertexBuffer, &vertices);
     let index_buffer = Buffer::immutable(ctx, BufferType::IndexBuffer, &indices);
@@ -83,14 +78,14 @@ fn blur_pipe(ctx: &mut Context, tex:Texture) -> PipeBind {
     let bind = Bindings {
         vertex_buffers: vec![vertex_buffer],
         index_buffer: index_buffer,
-        images: vec![tex],
+        images: vec![main, glow],
     };
 
     let shader = Shader::new(
         ctx,
-        blur_shader::VERTEX,
-        blur_shader::FRAGMENT,
-        blur_shader::meta(),
+        glow_blend_shader::VERTEX,
+        glow_blend_shader::FRAGMENT,
+        glow_blend_shader::meta(),
     )
     .unwrap();
 
@@ -158,14 +153,22 @@ impl Stage {
         let mut main_bind = bind.clone();
         main_bind.images.push(shadow_map.get_output());
 
+        let glow = GlowPipe::new(ctx);
+        let glow_bind = bind.clone();
+
         let copy = copy_pipe(ctx, main.get_output());
+        let glow_blend = glow_blend_pipe(ctx,
+            main.get_output(), glow.get_output());
  
         Stage {
             shadow_map,
             shadow_map_bind,
             main,
             main_bind,
+            glow,
+            glow_bind,
             copy,
+            glow_blend,
             objects,
             coloured_objects,
             rx: 0.,
@@ -180,6 +183,7 @@ impl EventHandler for Stage {
     fn resize_event(&mut self, ctx: &mut Context, width: f32, height: f32) {
         self.main.resize(ctx, width, height);
         self.copy.bind.images[0] = self.main.get_output();
+        self.glow_blend.bind.images[0] = self.main.get_output();
     }
 
     fn draw(&mut self, ctx: &mut Context) {
@@ -206,18 +210,26 @@ impl EventHandler for Stage {
 
         let (w, h) = ctx.screen_size();
         
-        self.shadow_map.draw(ctx, &self.shadow_map_bind, &self.objects, &model, &light_view_proj);
+        self.shadow_map.draw(ctx, &self.shadow_map_bind,
+            &self.objects, 
+            &model, &light_view_proj);
 
         self.main.draw(ctx, &self.main_bind,
             &self.objects, 
             &self.coloured_objects, 
             &model, &view_proj, &light_view_proj);
 
+        self.glow.draw(ctx, &self.glow_bind,
+            &self.objects, 
+            &self.coloured_objects, 
+            &model, &view_proj);
+
+        let output = &self.glow_blend;
         // and the post-processing-pass, rendering a quad, using the
         // previously rendered offscreen render-target as texture
         ctx.begin_default_pass(PassAction::Nothing);
-        ctx.apply_pipeline(&self.copy.pipe);
-        ctx.apply_bindings(&self.copy.bind);
+        ctx.apply_pipeline(&output.pipe);
+        ctx.apply_bindings(&output.bind);
         //ctx.apply_uniforms(&copy_to_screen_shader::Uniforms {
         //    resolution: glam::vec2(w, h),
         //});
@@ -270,7 +282,7 @@ mod copy_to_screen_shader {
     }
 }
 
-mod blur_shader {
+mod glow_blend_shader {
     use miniquad::*;
 
     pub const VERTEX: &str = r#"#version 100
@@ -290,38 +302,23 @@ mod blur_shader {
 
     varying vec2 texcoord;
 
-    uniform sampler2D tex;
-    uniform vec2 resolution;
-
-
-
-    // Source: https://github.com/Jam3/glsl-fast-gaussian-blur/blob/master/5.glsl
-    vec4 blur5(sampler2D image, vec2 uv, vec2 resolution, vec2 direction) {
-        vec4 color = vec4(0.0);
-        vec2 off1 = vec2(1.3333333333333333) * direction;
-        color += texture2D(image, uv) * 0.29411764705882354;
-        color += texture2D(image, uv + (off1 / resolution)) * 0.35294117647058826;
-        color += texture2D(image, uv - (off1 / resolution)) * 0.35294117647058826;
-        return color;
-    }
+    uniform sampler2D scene;
+    uniform sampler2D glow;
 
     void main() {
-        gl_FragColor = blur5(tex, texcoord, resolution, vec2(3.0));
+        vec3 src = texture2D(scene, texcoord).rgb;
+        vec3 dst = texture2D(glow, texcoord).rgb;
+        gl_FragColor = vec4(clamp((src + dst) - (src * dst), 0.0, 1.0), 1.0);
     }
     "#;
 
     pub fn meta() -> ShaderMeta {
         ShaderMeta {
-            images: vec!["tex".to_string()],
+            images: vec!["scene".to_string(),"glow".to_string() ],
             uniforms: UniformBlockLayout {
-                uniforms: vec![UniformDesc::new("resolution", UniformType::Float2)],
+                uniforms: vec![],
             },
         }
-    }
-
-    #[repr(C)]
-    pub struct Uniforms {
-        pub resolution: glam::Vec2,
     }
 }
 
