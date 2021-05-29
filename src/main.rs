@@ -27,6 +27,7 @@ struct Stage {
     glow: GlowPipe,
     glow_bind: Bindings,
     copy: PipeBind,
+    depth_view: PipeBind,
     glow_blend: PipeBind,
     objects: Vec<Object>,
     coloured_objects: Vec<ColouredObject>,
@@ -159,6 +160,7 @@ impl Stage {
         let copy = copy_pipe(ctx, main.get_output());
         let glow_blend = glow_blend_pipe(ctx,
             main.get_output(), glow.get_output());
+        let depth_view = depth_view_pipe(ctx, shadow_map.get_output());
  
         Stage {
             shadow_map,
@@ -168,6 +170,7 @@ impl Stage {
             glow,
             glow_bind,
             copy,
+            depth_view,
             glow_blend,
             objects,
             coloured_objects,
@@ -208,7 +211,7 @@ impl EventHandler for Stage {
         self.ry += 0.01;
         let model = Mat4::from_euler(EulerRot::YXZ, self.ry, self.rx, 0.);
 
-        let (w, h) = ctx.screen_size();
+        //let (w, h) = ctx.screen_size();
         
         self.shadow_map.draw(ctx, &self.shadow_map_bind,
             &self.objects, 
@@ -225,6 +228,7 @@ impl EventHandler for Stage {
             &model, &view_proj);
 
         let output = &self.glow_blend;
+        // let output = &self.depth_view;
         // let output = &mut self.copy;
         // output.bind.images[0] = self.glow.get_output();
         // and the post-processing-pass, rendering a quad, using the

@@ -111,7 +111,7 @@ pub const FRAGMENT: &str = r#"#version 100
 varying lowp vec4 vpos;
 
 void main() {
-    gl_FragColor = vec4(vec3(vpos.z / 100.0), 1.0);
+    gl_FragColor = vec4(vec3(vpos.z / 20.0), 1.0);
 }
 "#;
 

@@ -1,6 +1,6 @@
 use miniquad::*;
 use mq_test::quad_verts;
-use glam::{vec2, Vec2};
+use glam::vec2;
 
 struct Node {
     pass:RenderPass,
