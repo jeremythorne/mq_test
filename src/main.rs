@@ -8,7 +8,7 @@ mod objects;
 
 use main_pipe::MainPipe;
 use shadow_pipe::ShadowPipe;
-use objects::Object;
+use objects::{Object, ColouredObject};
 
 struct PipeBind {
     pipe: Pipeline,
@@ -22,6 +22,7 @@ struct Stage {
     main_bind: Bindings,
     copy: PipeBind,
     objects: Vec<Object>,
+    coloured_objects: Vec<ColouredObject>,
     rx: f32,
     ry: f32,
 }
@@ -146,7 +147,9 @@ fn depth_view_pipe(ctx: &mut Context, tex:Texture) -> PipeBind {
 
 impl Stage {
     pub fn new(ctx: &mut Context) -> Stage {
-        let (bind, objects) = objects::cubes(ctx);
+        let objects = objects::cubes();
+        let coloured_objects = objects::coloured_cubes();
+        let bind = objects::cube_bindings(ctx);
 
         let shadow_map = ShadowPipe::new(ctx);
         let shadow_map_bind = bind.clone();
@@ -164,6 +167,7 @@ impl Stage {
             main_bind,
             copy,
             objects,
+            coloured_objects,
             rx: 0.,
             ry: 0.,
         }
@@ -203,7 +207,11 @@ impl EventHandler for Stage {
         let (w, h) = ctx.screen_size();
         
         self.shadow_map.draw(ctx, &self.shadow_map_bind, &self.objects, &model, &light_view_proj);
-        self.main.draw(ctx, &self.main_bind, &self.objects, &model, &view_proj, &light_view_proj);
+
+        self.main.draw(ctx, &self.main_bind,
+            &self.objects, 
+            &self.coloured_objects, 
+            &model, &view_proj, &light_view_proj);
 
         // and the post-processing-pass, rendering a quad, using the
         // previously rendered offscreen render-target as texture

@@ -1,12 +1,17 @@
 use miniquad::*;
 
-use glam::{vec3, Mat4, EulerRot};
+use glam::{vec3, vec4, Vec4, Mat4, EulerRot};
 use quad_rand as qrand;
 
 pub struct Object {
     pub model:Mat4,
     pub start:i32,
     pub end:i32
+}
+
+pub struct ColouredObject {
+    pub object:Object,
+    pub colour:Vec4
 }
 
 fn cube_verts() -> (&'static[f32], &'static[u16]) {
@@ -57,17 +62,19 @@ fn cube_verts() -> (&'static[f32], &'static[u16]) {
     (vertices, indices)
 }
 
-pub fn cubes(ctx: &mut Context) -> (Bindings, Vec<Object>) {
+pub fn cube_bindings(ctx: &mut Context) -> Bindings {
     let (vertices, indices) = cube_verts();
     let vertex_buffer = Buffer::immutable(ctx, BufferType::VertexBuffer, &vertices);
     let index_buffer = Buffer::immutable(ctx, BufferType::IndexBuffer, &indices);
 
-    let bind = Bindings {
+    Bindings {
         vertex_buffers: vec![vertex_buffer],
         index_buffer: index_buffer,
         images: vec![],
-    };
+    }
+}
 
+pub fn cubes() -> Vec<Object> {
     let mut cubes = Vec::<Mat4>::new();
     for _ in 0..40 {
         let r = qrand::gen_range(0., 1.);
@@ -102,5 +109,45 @@ pub fn cubes(ctx: &mut Context) -> (Bindings, Vec<Object>) {
         end: 6
     });
 
-    (bind, objects)
+    objects
+}
+
+pub fn coloured_cubes() -> Vec<ColouredObject> {
+    let colours = vec![
+        vec4(1., 0., 0., 1.),
+        vec4(1., 0.5, 0., 1.),
+        vec4(1., 1., 0., 1.),
+        vec4(0., 1., 0., 1.),
+        vec4(0., 0., 1., 1.),
+        vec4(0.3, 0., 0.5, 1.),
+        vec4(0.5, 0., 0.5, 1.),
+    ];
+
+    let mut cubes = Vec::<ColouredObject>::new();
+    for colour in colours {
+        let r = qrand::gen_range(0.5, 1.);
+        let rot = Mat4::from_euler(EulerRot::YXZ, 
+            qrand::gen_range(-std::f32::consts::PI, std::f32::consts::PI),
+            0.0, 0.);
+        let rot2 = Mat4::from_euler(EulerRot::YXZ, 
+            qrand::gen_range(-std::f32::consts::PI, std::f32::consts::PI),
+            0.0, 0.);
+         let s = (1.4 - r) * qrand::gen_range(0.7, 0.9);
+        let scale = Mat4::from_scale(vec3(s, s, s));
+        let trans = Mat4::from_translation(vec3(
+            6.0 * r,
+            s - 1.0,
+            0.0,
+        ));
+        cubes.push(
+            ColouredObject {
+                object: Object {
+                    model: rot * trans * scale * rot2,
+                    start: 0,
+                    end: 36
+                },
+                colour
+            });
+    }
+    cubes
 }

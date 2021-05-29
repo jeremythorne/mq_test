@@ -1,10 +1,11 @@
 use miniquad::*;
 use glam::Mat4;
-use crate::objects::Object;
+use crate::objects::{Object, ColouredObject};
 
 pub struct MainPipe {
     pass:RenderPass,
     pipe:Pipeline,
+    coloured_pipe:Pipeline,
     output:Texture
 }
 
@@ -57,9 +58,34 @@ impl MainPipe {
             },
         );
 
+        let shader = Shader::new(
+            ctx,
+            COLOURED_VERTEX,
+            COLOURED_FRAGMENT,
+            coloured_meta(),
+        )
+        .unwrap();
+
+        let coloured_pipe = Pipeline::with_params(
+            ctx,
+            &[BufferLayout {
+                stride: 36,
+                ..Default::default()
+            }],
+            &[
+                VertexAttribute::new("pos", VertexFormat::Float3),
+            ],
+            shader,
+            PipelineParams {
+                depth_test: Comparison::LessOrEqual,
+                depth_write: true,
+                ..Default::default()
+            },
+        );
         MainPipe {
             pass,
             pipe,
+            coloured_pipe,
             output: color_img
         }
     }
@@ -94,7 +120,9 @@ impl MainPipe {
 
     pub fn draw(&self, ctx: &mut Context,
         bind: &Bindings,
-        objects: &Vec<Object>, model: &Mat4, view_proj: &Mat4, light_view_proj: &Mat4) {
+        objects: &Vec<Object>,
+        coloured_objects: &Vec<ColouredObject>,
+        model: &Mat4, view_proj: &Mat4, light_view_proj: &Mat4) {
         ctx.begin_pass(
             self.pass,
             PassAction::clear_color(0.0, 0.0, 0.0, 0.0),
@@ -107,6 +135,15 @@ impl MainPipe {
                 light_mvp: *light_view_proj * *model * obj.model,
             });
             ctx.draw(obj.start, obj.end, 1);
+        }
+        ctx.apply_pipeline(&self.coloured_pipe);
+        ctx.apply_bindings(bind);
+        for cobj in coloured_objects.iter() {
+            ctx.apply_uniforms(&ColouredUniforms {
+                mvp: *view_proj * *model * cobj.object.model,
+                colour: cobj.colour,
+            });
+            ctx.draw(cobj.object.start, cobj.object.end, 1);
         }
         ctx.end_render_pass();
     }
@@ -169,4 +206,43 @@ fn meta() -> ShaderMeta {
 pub struct Uniforms {
     pub mvp: glam::Mat4,
     pub light_mvp: glam::Mat4,
+}
+
+const COLOURED_VERTEX: &str = r#"#version 100
+attribute vec4 pos;
+
+uniform mat4 mvp;
+
+void main() {
+    gl_Position = mvp * pos;
+}
+"#;
+
+const COLOURED_FRAGMENT: &str = r#"#version 100
+
+precision mediump float;
+
+uniform vec4 colour;
+
+void main() {
+    gl_FragColor = colour;
+}
+"#;
+
+fn coloured_meta() -> ShaderMeta {
+    ShaderMeta {
+        images: vec![],
+        uniforms: UniformBlockLayout {
+            uniforms: vec![
+                UniformDesc::new("mvp", UniformType::Mat4),
+                UniformDesc::new("colour", UniformType::Float4),
+            ]
+        },
+    }
+}
+
+#[repr(C)]
+pub struct ColouredUniforms {
+    pub mvp: glam::Mat4,
+    pub colour: glam::Vec4,
 }
