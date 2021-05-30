@@ -184,7 +184,7 @@ void main() {
     float c = 4.0;
     vec2 light_uv = (light_pos.xy / light_pos.w) * 0.5 + 0.5;
     vec4 texel = texture2D(shadow_map, light_uv);
-    float light_depth = light_pos.z / 20.0;
+    float light_depth = light_pos.z / 30.0;
     float shadow = clamp(exp(-c * (light_depth - texel.r)), 0.0, 1.0);
     gl_FragColor = vec4(1.0) * clamp(ambient + shadow, 0.0, 1.0);
 }

@@ -199,7 +199,7 @@ impl EventHandler for Stage {
         );
         let view_proj = proj * view;
 
-        let proj = Mat4::perspective_rh_gl(60.0f32.to_radians(), 1.0, 10.0, 20.0);
+        let proj = Mat4::perspective_rh_gl(60.0f32.to_radians(), 1.0, 10.0, 30.0);
         let light_view = Mat4::look_at_rh(
             vec3(10.0, 10.0, 10.0),
             vec3(0.0, 0.0, 0.0),
@@ -228,7 +228,7 @@ impl EventHandler for Stage {
             &model, &view_proj);
 
         let output = &self.glow_blend;
-        // let output = &self.depth_view;
+        //let output = &self.depth_view;
         // let output = &mut self.copy;
         // output.bind.images[0] = self.glow.get_output();
         // and the post-processing-pass, rendering a quad, using the

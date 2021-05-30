@@ -6,6 +6,7 @@ struct Node {
     pass:RenderPass,
     pipe:Pipeline,
     bind:Bindings,
+    radius:f32,
     output:Texture    
 }
 
@@ -13,6 +14,7 @@ impl Node {
     pub fn new(ctx: &mut Context,
         vertex_shader: &str,
         fragment_shader: &str,
+        radius: f32,
         input:Texture) -> Node {
 
         let color_img = Texture::new_render_texture(
@@ -61,6 +63,7 @@ impl Node {
             pass,
             pipe,
             bind,
+            radius,
             output
         }
     }
@@ -75,6 +78,7 @@ impl Node {
         let (w, h) = (256.0, 256.0);
         ctx.apply_uniforms(&Uniforms {
             resolution: vec2(1.0 / w, 1.0 / h),
+            radius: self.radius
         });
         ctx.draw(0, 6, 1);
         ctx.end_render_pass();
@@ -91,9 +95,9 @@ pub struct BlurPipe {
 }
 
 impl BlurPipe {
-    pub fn new(ctx: &mut Context, input:Texture) -> BlurPipe {
-        let horiz = Node::new(ctx, VERTEX, HORIZ_FRAGMENT, input);
-        let vert = Node::new(ctx, VERTEX, VERT_FRAGMENT, horiz.get_output());
+    pub fn new(ctx: &mut Context, radius:f32, input:Texture) -> BlurPipe {
+        let horiz = Node::new(ctx, VERTEX, HORIZ_FRAGMENT, radius, input);
+        let vert = Node::new(ctx, VERTEX, VERT_FRAGMENT, radius, horiz.get_output());
         let output = vert.get_output();
         BlurPipe {
             horiz,
@@ -131,15 +135,17 @@ varying vec2 texcoord;
 
 uniform sampler2D tex;
 uniform vec2 resolution;
+uniform float radius;
 
 void main() {
-    float width = 3.0;
     vec4 acc = vec4(0.0);
+    int width = int(radius) * 2;
 
-    for (int i = 0; i <= 6; i++) {
-        acc += texture2D(tex, texcoord + resolution * vec2(float(i) - width, 0.0));
+    for (int i = 0; i < 10; i++) {
+        if (i > width) break;
+        acc += texture2D(tex, texcoord + resolution * vec2(float(i) - radius, 0.0));
     }
-    gl_FragColor = acc / (2.0 * width);
+    gl_FragColor = acc / float(width);
 }
 "#;
 
@@ -150,15 +156,17 @@ varying vec2 texcoord;
 
 uniform sampler2D tex;
 uniform vec2 resolution;
+uniform float radius;
 
 void main() {
-    float width = 3.0;
     vec4 acc = vec4(0.0);
+    int width = int(radius) * 2;
 
-    for (int i = 0; i <= 6; i++) {
-        acc += texture2D(tex, texcoord + resolution * vec2(0.0, float(i) - width));
+    for (int i = 0; i < 10; i++) {
+        if (i > width) break;
+        acc += texture2D(tex, texcoord + resolution * vec2(0.0, float(i) - radius));
     }
-    gl_FragColor = acc / (2.0 * width);
+    gl_FragColor = acc / float(width);
 }
 "#;
 
@@ -166,7 +174,9 @@ pub fn meta() -> ShaderMeta {
     ShaderMeta {
         images: vec!["tex".to_string()],
         uniforms: UniformBlockLayout {
-            uniforms: vec![UniformDesc::new("resolution", UniformType::Float2),
+            uniforms: vec![
+                UniformDesc::new("resolution", UniformType::Float2),
+                UniformDesc::new("radius", UniformType::Float1),
             ]},
     }
 }
@@ -174,4 +184,5 @@ pub fn meta() -> ShaderMeta {
 #[repr(C)]
 pub struct Uniforms {
     pub resolution: glam::Vec2,
+    pub radius: f32
 }

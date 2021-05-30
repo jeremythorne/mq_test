@@ -58,7 +58,7 @@ impl GlowPipe {
             },
         );
 
-        let blur_pipe = BlurPipe::new(ctx, color_img);
+        let blur_pipe = BlurPipe::new(ctx, 3.0, color_img);
         let output = blur_pipe.get_output();
 
         GlowPipe {
@@ -76,14 +76,14 @@ impl GlowPipe {
         model: &Mat4, view_proj: &Mat4) {
         ctx.begin_pass(
             self.pass,
-            PassAction::clear_color(0.0, 0.0, 0.0, 1.0),
+            PassAction::clear_color(0.0, 0.0, 0.0, 0.0),
         );
         ctx.apply_pipeline(&self.pipe);
         ctx.apply_bindings(bind);
         for obj in objects.iter() {
             ctx.apply_uniforms(&Uniforms {
                 mvp: *view_proj * *model * obj.model,
-                colour: glam::vec4(0., 0., 0., 1.0)
+                colour: glam::vec4(0., 0., 0., 0.)
             });
             ctx.draw(obj.start, obj.end, 1);
         }

@@ -58,7 +58,7 @@ impl ShadowPipe {
             },
         );
 
-        let blur_pipe = BlurPipe::new(ctx, color_img);
+        let blur_pipe = BlurPipe::new(ctx, 2.0, color_img);
         let output = blur_pipe.get_output();
 
         ShadowPipe {
@@ -111,7 +111,7 @@ pub const FRAGMENT: &str = r#"#version 100
 varying lowp vec4 vpos;
 
 void main() {
-    gl_FragColor = vec4(vec3(vpos.z / 20.0), 1.0);
+    gl_FragColor = vec4(vec3(vpos.z / 30.0), 1.0);
 }
 "#;
 
