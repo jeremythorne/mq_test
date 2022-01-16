@@ -8,5 +8,5 @@ edition = "2018"
 
 [dependencies]
 miniquad = {path = "../miniquad"}
-glam = {version = "0.15", features = ["scalar-math"] }
+glam = {version = "0.20.2", features = ["scalar-math"] }
 quad-rand = "0.1"

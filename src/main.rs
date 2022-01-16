@@ -199,14 +199,16 @@ impl EventHandler for Stage {
         );
         let view_proj = proj * view;
 
-        let proj = Mat4::perspective_rh_gl(60.0f32.to_radians(), 1.0, 10.0, 30.0);
+        let light_pos = vec3(-100.0, 100.0, 100.0);
+        let light_range = (150.0, 200.0);
+        let light_proj = Mat4::perspective_rh_gl(10.0f32.to_radians(), 1.0,
+            light_range.0, light_range.1);
         let light_view = Mat4::look_at_rh(
-            vec3(10.0, 10.0, 10.0),
+            light_pos,
             vec3(0.0, 0.0, 0.0),
             vec3(0.0, 1.0, 0.0),
         );
-        let light_view_proj = proj * light_view;
- 
+        let light_pos_view = view * light_pos.extend(1.0);
         //self.rx += 0.01;
         self.ry += 0.01;
         let model = Mat4::from_euler(EulerRot::YXZ, self.ry, self.rx, 0.);
@@ -215,12 +217,13 @@ impl EventHandler for Stage {
         
         self.shadow_map.draw(ctx, &self.shadow_map_bind,
             &self.objects, 
-            &model, &light_view_proj);
+            &model, &light_view, &light_proj);
 
         self.main.draw(ctx, &self.main_bind,
             &self.objects, 
             &self.coloured_objects, 
-            &model, &view_proj, &light_view_proj);
+            &model, light_pos_view, &view_proj, &light_view,
+            &light_proj);
 
         self.glow.draw(ctx, &self.glow_bind,
             &self.objects, 
@@ -273,8 +276,13 @@ mod copy_to_screen_shader {
 
     uniform sampler2D tex;
 
+    vec4 gamma_correct( in vec4 colour)
+    {
+        return vec4(pow(colour.xyz, vec3(1.0/2.2)), colour.w);
+    }
+
     void main() {
-        gl_FragColor = texture2D(tex, texcoord);
+        gl_FragColor = gamma_correct(texture2D(tex, texcoord));
     }
     "#;
 
@@ -344,15 +352,15 @@ mod depth_view_shader {
     "#;
 
     pub const FRAGMENT: &str = r#"#version 100
-    precision lowp float;
+    precision mediump float;
 
     varying vec2 texcoord;
 
     uniform sampler2D tex;
 
     void main() {
-        vec3 depth = vec3(texture2D(tex, texcoord).r);
-        gl_FragColor = vec4(1.0 - depth, 1.0);
+        float depth = texture2D(tex, texcoord).x;
+        gl_FragColor = vec4(vec3(1.0 - depth), 1.0);
     }
     "#;
 

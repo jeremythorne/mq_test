@@ -44,7 +44,7 @@ impl ShadowPipe {
         let pipe = Pipeline::with_params(
             ctx,
             &[BufferLayout {
-                stride: 36,
+                stride: 48,
                 ..Default::default()
             }],
             &[
@@ -60,6 +60,7 @@ impl ShadowPipe {
 
         let blur_pipe = BlurPipe::new(ctx, 2.0, color_img);
         let output = blur_pipe.get_output();
+        //let output = color_img;
 
         ShadowPipe {
             pass,
@@ -71,7 +72,7 @@ impl ShadowPipe {
 
     pub fn draw(&self, ctx: &mut Context,
         bind: &Bindings,
-        objects: &Vec<Object>, model: &Mat4, view_proj: &Mat4) {
+        objects: &Vec<Object>, model: &Mat4, view: &Mat4, proj: &Mat4) {
         ctx.begin_pass(
             self.pass,
             PassAction::clear_color(1.0, 1.0, 1.0, 1.0),
@@ -80,7 +81,7 @@ impl ShadowPipe {
         ctx.apply_bindings(bind);
         for obj in objects.iter() {
             ctx.apply_uniforms(&Uniforms {
-                mvp: *view_proj * *model * obj.model,
+                mvp: *proj * *view * *model * obj.model
             });
             ctx.draw(obj.start, obj.end, 1);
         }
@@ -96,22 +97,24 @@ impl ShadowPipe {
 pub const VERTEX: &str = r#"#version 100
 attribute vec4 pos;
 
-varying lowp vec4 vpos;
+varying vec4 vpos;
 
 uniform mat4 mvp;
 
 void main() {
-    gl_Position = mvp * pos;
     vpos = mvp * pos;
+    gl_Position = vpos;
 }
 "#;
 
 pub const FRAGMENT: &str = r#"#version 100
+precision mediump float;
 
-varying lowp vec4 vpos;
+varying vec4 vpos;
 
 void main() {
-    gl_FragColor = vec4(vec3(vpos.z / 30.0), 1.0);
+    float depth = vpos.z/vpos.w;
+    gl_FragColor = vec4(depth, 0.0, 0.0, 1.0);
 }
 "#;
 
@@ -119,7 +122,8 @@ pub fn meta() -> ShaderMeta {
     ShaderMeta {
         images: vec![],
         uniforms: UniformBlockLayout {
-            uniforms: vec![UniformDesc::new("mvp", UniformType::Mat4),
+            uniforms: vec![
+                UniformDesc::new("mvp", UniformType::Mat4),
             ],
         },
     }
