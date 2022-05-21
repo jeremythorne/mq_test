@@ -15,8 +15,8 @@ impl ShadowPipe {
         let color_img = Texture::new_render_texture(
             ctx,
             TextureParams {
-                width: 256,
-                height: 256,
+                width: 512,
+                height: 512,
                 format: TextureFormat::RGBA8,
                 ..Default::default()
             },
@@ -24,8 +24,8 @@ impl ShadowPipe {
         let depth_img = Texture::new_render_texture(
             ctx,
             TextureParams {
-                width: 256,
-                height: 256,
+                width: 512,
+                height: 512,
                 format: TextureFormat::Depth,
                 ..Default::default()
             },
