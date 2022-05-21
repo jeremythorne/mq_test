@@ -233,7 +233,7 @@ impl EventHandler for Stage {
 
         let output = &self.glow_blend;
         //let output = &self.depth_view;
-        // let output = &mut self.copy;
+        //let output = &mut self.copy;
         // output.bind.images[0] = self.glow.get_output();
         // and the post-processing-pass, rendering a quad, using the
         // previously rendered offscreen render-target as texture
@@ -320,10 +320,16 @@ mod glow_blend_shader {
     uniform sampler2D scene;
     uniform sampler2D glow;
 
+    vec4 gamma_correct( in vec4 colour)
+    {
+        return vec4(pow(colour.xyz, vec3(1.0/2.2)), colour.w);
+    }
+
     void main() {
         vec3 src = texture2D(scene, texcoord).rgb;
         vec3 dst = texture2D(glow, texcoord).rgb;
-        gl_FragColor = vec4(clamp((src + dst) - (src * dst), 0.0, 1.0), 1.0);
+        vec4 colour = vec4(clamp((src + dst) - (src * dst), 0.0, 1.0), 1.0);
+        gl_FragColor = gamma_correct(colour);
     }
     "#;
 
