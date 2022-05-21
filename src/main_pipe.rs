@@ -208,17 +208,36 @@ varying vec4 vshadow_coord;
 
 uniform sampler2D shadow_map;
 
+float unpack_depth_simple(vec4 value) {
+    return value.x;
+}
+
+float unpack_depth(const in vec4 rgba_depth)
+{
+    const vec4 bit_shift = vec4(1.0/(256.0*256.0*256.0), 1.0/(256.0*256.0), 1.0/256.0, 1.0);
+    float depth = dot(rgba_depth, bit_shift);
+    return depth;
+}
+
 void main() {
     float ambient = 0.0;
 
-    float c = 40.0;
+    float c = 100.0;
     vec2 shadow_uv = (vshadow_coord.xy / vshadow_coord.w) * 0.5 + 0.5;
-    float map_depth = texture2D(shadow_map, shadow_uv).x;
+    vec4 shadow_value = texture2D(shadow_map, shadow_uv);
+    float map_depth = unpack_depth(shadow_value); 
     float light_depth = vshadow_coord.z / vshadow_coord.w;
-    float shadow = clamp(exp(-c * (light_depth - map_depth)), 0.0, 1.0);
+    // if light_depth > map_depth we should be in shadow
+    // e^x is > 1 for x > 0 and tends to 0 for x < 0
+    float disparity = light_depth - map_depth -0.001;
+    float shadow = 1.0;
+    if (disparity > 0.0) {
+        shadow = clamp(exp(-c * disparity), 0.0, 1.0);
+        //shadow = clamp(disparity, 0.0, 1.0);
+    }
 
     float lambert = max(0.0, dot(normalize(vlight_dir), normalize(vnormal_view)));
-
+    //float lambert = 1.0;
     gl_FragColor = vec4(1.0) * clamp(ambient + lambert * shadow, 0.0, 1.0);
 }
 "#;

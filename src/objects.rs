@@ -76,19 +76,21 @@ pub fn cube_bindings(ctx: &mut Context) -> Bindings {
 
 pub fn cubes() -> Vec<Object> {
     let mut cubes = Vec::<Mat4>::new();
-    for _ in 0..40 {
-        let r = qrand::gen_range(0., 1.);
+    for i in 0..36 {
+        let x = 2.0 * ((i / 6) as f32 - 2.5);
+        let z = 2.0 * ((i % 6) as f32 - 2.5);
+        let r = (x * x + z * z).sqrt();
         let rot = Mat4::from_euler(EulerRot::YXZ, 
             qrand::gen_range(-std::f32::consts::PI, std::f32::consts::PI),
             0.0, 0.);
-        let s = (1.4 - r) * qrand::gen_range(0.7, 0.9);
+        let s = 1.0 * (1.4 - r / 6.0) * qrand::gen_range(0.7, 0.9);
         let scale = Mat4::from_scale(vec3(s, s, s));
         let trans = Mat4::from_translation(vec3(
-            6.0 * r,
+            x,
             s - 1.0,
-            0.0,
+            z,
         ));
-        cubes.push(rot * trans * scale);
+        cubes.push(trans * scale * rot);
     }
     let trans = Mat4::from_translation(vec3(0., 0., 2.));
     let rot = Mat4::from_euler(EulerRot::YXZ, 

@@ -3,6 +3,7 @@ use miniquad::*;
 use glam::{vec3, Mat4, EulerRot};
 
 mod blur_pipe;
+mod blur_shadow_pipe;
 mod main_pipe;
 mod shadow_pipe;
 mod glow_pipe;
@@ -200,7 +201,7 @@ impl EventHandler for Stage {
         let view_proj = proj * view;
 
         let light_pos = vec3(-100.0, 100.0, 100.0);
-        let light_range = (150.0, 200.0);
+        let light_range = (136.0, 200.0);
         let light_proj = Mat4::perspective_rh_gl(10.0f32.to_radians(), 1.0,
             light_range.0, light_range.1);
         let light_view = Mat4::look_at_rh(
@@ -357,9 +358,20 @@ mod depth_view_shader {
     varying vec2 texcoord;
 
     uniform sampler2D tex;
+    
+    float unpack_depth_simple(vec4 value) {
+        return value.x;
+    }
+
+    float unpack_depth(const in vec4 rgba_depth)
+    {
+        const vec4 bit_shift = vec4(1.0/(256.0*256.0*256.0), 1.0/(256.0*256.0), 1.0/256.0, 1.0);
+        float depth = dot(rgba_depth, bit_shift);
+        return depth;
+    }
 
     void main() {
-        float depth = texture2D(tex, texcoord).x;
+        float depth = unpack_depth(texture2D(tex, texcoord));
         gl_FragColor = vec4(vec3(1.0 - depth), 1.0);
     }
     "#;

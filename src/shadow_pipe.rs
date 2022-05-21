@@ -1,12 +1,12 @@
 use miniquad::*;
 use glam::Mat4;
 use crate::objects::Object;
-use crate::blur_pipe::BlurPipe;
+use crate::blur_shadow_pipe::BlurShadowPipe;
 
 pub struct ShadowPipe {
     pass:RenderPass,
     pipe:Pipeline,
-    blur_pipe:BlurPipe,
+    blur_pipe:BlurShadowPipe,
     output:Texture
 }
 
@@ -58,9 +58,9 @@ impl ShadowPipe {
             },
         );
 
-        let blur_pipe = BlurPipe::new(ctx, 2.0, color_img);
+        let blur_pipe = BlurShadowPipe::new(ctx, 2.0, color_img);
         let output = blur_pipe.get_output();
-        //let output = color_img;
+        let output = color_img;
 
         ShadowPipe {
             pass,
@@ -112,9 +112,22 @@ precision mediump float;
 
 varying vec4 vpos;
 
+vec4 pack_depth_simple(float depth) {
+    return vec4(depth, 0.0, 0.0, 1.0);
+}
+
+vec4 pack_depth(const in float depth)
+{
+    const vec4 bit_shift = vec4(256.0*256.0*256.0, 256.0*256.0, 256.0, 1.0);
+    const vec4 bit_mask  = vec4(0.0, 1.0/256.0, 1.0/256.0, 1.0/256.0);
+    vec4 res = fract(depth * bit_shift);
+    res -= res.xxyz * bit_mask;
+    return res;
+}
+
 void main() {
     float depth = vpos.z/vpos.w;
-    gl_FragColor = vec4(depth, 0.0, 0.0, 1.0);
+    gl_FragColor = pack_depth(depth);
 }
 "#;
 
