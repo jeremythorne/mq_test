@@ -1,6 +1,6 @@
 use miniquad::*;
 
-use glam::{vec3, Mat4, EulerRot};
+use glam::{vec3, Vec3, Mat4, /*EulerRot*/};
 
 mod blur_pipe;
 mod blur_shadow_pipe;
@@ -28,12 +28,11 @@ struct Stage {
     glow: GlowPipe,
     glow_bind: Bindings,
     copy: PipeBind,
-    depth_view: PipeBind,
+    _depth_view: PipeBind,
     glow_blend: PipeBind,
     objects: Vec<Object>,
     coloured_objects: Vec<ColouredObject>,
-    rx: f32,
-    ry: f32,
+    pos: Vec3,
 }
 
 fn copy_pipe(ctx: &mut Context, tex:Texture) -> PipeBind {
@@ -144,8 +143,6 @@ fn depth_view_pipe(ctx: &mut Context, tex:Texture) -> PipeBind {
 
 impl Stage {
     pub fn new(ctx: &mut Context) -> Stage {
-        let objects = objects::cubes();
-        let coloured_objects = objects::coloured_cubes();
         let bind = objects::cube_bindings(ctx);
 
         let shadow_map = ShadowPipe::new(ctx);
@@ -161,7 +158,7 @@ impl Stage {
         let copy = copy_pipe(ctx, main.get_output());
         let glow_blend = glow_blend_pipe(ctx,
             main.get_output(), glow.get_output());
-        let depth_view = depth_view_pipe(ctx, shadow_map.get_output());
+        let _depth_view = depth_view_pipe(ctx, shadow_map.get_output());
  
         Stage {
             shadow_map,
@@ -171,18 +168,21 @@ impl Stage {
             glow,
             glow_bind,
             copy,
-            depth_view,
+            _depth_view,
             glow_blend,
-            objects,
-            coloured_objects,
-            rx: 0.,
-            ry: 0.,
+            objects: vec![],
+            coloured_objects: vec![],
+            pos: vec3(0., 0., 0.)
         }
     }
 }
 
 impl EventHandler for Stage {
-    fn update(&mut self, _ctx: &mut Context) {}
+    fn update(&mut self, _ctx: &mut Context) {
+        self.pos.z += 0.1;
+        self.objects = objects::cubes(self.pos);
+        self.coloured_objects = objects::coloured_cubes(self.pos);
+    }
 
     fn resize_event(&mut self, ctx: &mut Context, width: f32, height: f32) {
         self.main.resize(ctx, width, height);
@@ -194,8 +194,8 @@ impl EventHandler for Stage {
         let (width, height) = ctx.screen_size();
         let proj = Mat4::perspective_rh_gl(60.0f32.to_radians(), width / height, 0.01, 20.0);
         let view = Mat4::look_at_rh(
-            vec3(0.0, 1.5, 10.0),
-            vec3(0.0, 0.0, 0.0),
+            vec3(0.5, 0.125, 5.0),
+            vec3(0.5, 0.0, 0.0),
             vec3(0.0, 1.0, 0.0),
         );
         let view_proj = proj * view;
@@ -210,12 +210,8 @@ impl EventHandler for Stage {
             vec3(0.0, 1.0, 0.0),
         );
         let light_pos_view = view * light_pos.extend(1.0);
-        //self.rx += 0.01;
-        self.ry += 0.01;
-        let model = Mat4::from_euler(EulerRot::YXZ, self.ry, self.rx, 0.);
+        let model = Mat4::from_translation(self.pos);
 
-        //let (w, h) = ctx.screen_size();
-        
         self.shadow_map.draw(ctx, &self.shadow_map_bind,
             &self.objects, 
             &model, &light_view, &light_proj);
@@ -232,7 +228,7 @@ impl EventHandler for Stage {
             &model, &view_proj);
 
         let output = &self.glow_blend;
-        //let output = &self.depth_view;
+        //let output = &self._depth_view;
         //let output = &mut self.copy;
         // output.bind.images[0] = self.glow.get_output();
         // and the post-processing-pass, rendering a quad, using the
